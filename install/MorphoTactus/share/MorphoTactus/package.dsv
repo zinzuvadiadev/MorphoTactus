@@ -1,0 +1,6 @@
+source;share/MorphoTactus/hook/pythonpath.ps1
+source;share/MorphoTactus/hook/pythonpath.dsv
+source;share/MorphoTactus/hook/pythonpath.sh
+source;share/MorphoTactus/hook/ament_prefix_path.ps1
+source;share/MorphoTactus/hook/ament_prefix_path.dsv
+source;share/MorphoTactus/hook/ament_prefix_path.sh

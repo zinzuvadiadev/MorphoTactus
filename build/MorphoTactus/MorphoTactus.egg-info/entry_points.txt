@@ -1,0 +1,5 @@
+[console_scripts]
+hybrid_detector_node = MorphoTactus.hybrid_detector_node:main
+image_source_node = MorphoTactus.image_source_node:main
+preprocessing_node = MorphoTactus.preprocessing_node:main
+

@@ -1,0 +1,98 @@
+# MorphoTactus Defect Detection System Configuration
+  resolution_width: 640
+  resolution_height: 480
+  roi_x_min: 50
+  roi_y_min: 50
+  roi_x_max: 590
+  roi_y_max: 430
+  gaussian_blur_kernel: 5
+  bilateral_filter_d: 9
+  bilateral_filter_sigma_color: 75
+  bilateral_filter_sigma_space: 75
+
+# Contour 
+contour_detection:
+  canny_low_threshold: 50
+  canny_high_threshold: 150
+  canny_aperture_size: 3
+  min_contour_area: 100
+  max_contour_area: 50000
+  min_contour_perimeter: 50
+  aspect_ratio_threshold: 0.1
+  circularity_threshold: 0.6
+  convexity_threshold: 0.8
+  anomaly_score_threshold: 0.7
+
+# SIFT 
+sift_analysis:
+  max_features: 500
+  n_octaves: 4
+  n_octave_layers: 3
+  contrast_threshold: 0.04
+  edge_threshold: 10
+  sigma: 1.6
+  match_ratio_threshold: 0.75
+  min_matches: 10
+  spatial_consistency_threshold: 0.8
+
+orb_analysis:
+  max_features: 1000
+  scale_factor: 1.2
+  n_levels: 8
+  edge_threshold: 31
+  first_level: 0
+  wta_k: 2
+  score_type: 0
+  patch_size: 31
+  fast_threshold: 20
+
+# Fusion Engine 
+fusion_engine:
+  contour_weight: 0.6
+  sift_weight: 0.4
+  overall_confidence_threshold: 0.75
+  critical_defect_threshold: 0.9
+  early_termination_enabled: true
+  max_processing_time_ms: 100
+
+# Visualization Parameters
+visualization:
+  bounding_box_color_red: 255
+  bounding_box_color_green: 0
+  bounding_box_color_blue: 0
+  circle_color_red: 255
+  circle_color_green: 165
+  circle_color_blue: 0
+  pass_color_red: 0
+  pass_color_green: 255
+  pass_color_blue: 0
+  fail_color_red: 255
+  fail_color_green: 0
+  fail_color_blue: 0
+  warning_color_red: 255
+  warning_color_green: 255
+  warning_color_blue: 0
+  text_scale: 1.0
+  text_thickness: 2
+  line_thickness: 2
+
+jetson_optimizations:
+  use_gpu: true
+  thread_count: 4
+  memory_limit_mb: 2048
+  enable_tensorrt: false
+  use_half_precision: true
+  batch_size: 1
+
+performance:
+  enable_profiling: true
+  log_processing_times: true
+  publish_diagnostics: true
+  diagnostic_frequency: 1.0
+
+# Debug 
+debug:
+  publish_intermediate_results: false
+  save_debug_images: false
+  debug_image_path: "/tmp/morphotactus_debug"
+  enable_verbose_logging: false 
