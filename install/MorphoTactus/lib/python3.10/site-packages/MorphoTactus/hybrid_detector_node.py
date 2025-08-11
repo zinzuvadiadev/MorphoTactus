@@ -16,10 +16,11 @@ import logging
 from typing import List, Dict, Optional
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
-# Import custom messages
-from MorphoTactus.msg import DefectMetadata, DefectInfo
-from geometry_msgs.msg import Point2D, Polygon, Point32
+# Import custom messages (temporarily commented out)
+# from MorphoTactus.msg import DefectMetadata, DefectInfo
+# from geometry_msgs.msg import Point2D, Polygon, Point32
 
 # Import utility modules
 from .utils.contour_analyzer import ContourAnalyzer, ContourDefect
@@ -39,7 +40,7 @@ class HybridDetectorNode(Node):
         self.bridge = CvBridge()
         
         # Get parameters
-        self.declare_parameters()
+        self.declare_node_parameters()
         self.load_parameters()
         
         # Setup logging
@@ -53,25 +54,31 @@ class HybridDetectorNode(Node):
         # Initialize subscribers and publishers
         self.image_sub = self.create_subscription(
             Image, 'preprocessed_image', self.image_callback, 10)
-        self.annotated_pub = self.create_publisher(Image, 'annotated_image', 10)
-        self.metadata_pub = self.create_publisher(DefectMetadata, 'defect_metadata', 10)
+        annotated_qos = QoSProfile(depth=10)
+        annotated_qos.reliability = ReliabilityPolicy.BEST_EFFORT
+        annotated_qos.history = HistoryPolicy.KEEP_LAST
+        self.annotated_pub = self.create_publisher(Image, 'annotated_image', annotated_qos)
+        # self.metadata_pub = self.create_publisher(DefectMetadata, 'defect_metadata', 10)
         
         # Performance tracking
         self.frame_count = 0
         self.processing_times = []
         self.part_id_counter = 0
+        self._last_pub_time_s = 0.0
         
         # Thread pool for parallel processing
-        self.executor = ThreadPoolExecutor(max_workers=2)
+        self.thread_pool = ThreadPoolExecutor(max_workers=2)
         
         self.get_logger().info("Hybrid detector node initialized successfully")
     
-    def declare_parameters(self):
+    def declare_node_parameters(self):
         """Declare ROS parameters"""
-        # Visualization parameters
+        # Visualization parameters (smaller defaults)
         self.declare_parameter('text_scale', 1.0)
         self.declare_parameter('text_thickness', 2)
         self.declare_parameter('line_thickness', 2)
+        self.declare_parameter('hud_scale', 1.0)
+        self.declare_parameter('hud_bg', True)
         self.declare_parameter('bounding_box_color_red', 255)
         self.declare_parameter('bounding_box_color_green', 0)
         self.declare_parameter('bounding_box_color_blue', 0)
@@ -85,6 +92,9 @@ class HybridDetectorNode(Node):
         self.declare_parameter('fail_color_green', 0)
         self.declare_parameter('fail_color_blue', 0)
         
+        # Throughput control
+        self.declare_parameter('publish_rate_hz', 15.0)  # throttle annotated output
+        
         # Performance parameters
         self.declare_parameter('enable_profiling', True)
         self.declare_parameter('publish_debug_info', False)
@@ -96,35 +106,40 @@ class HybridDetectorNode(Node):
     def load_parameters(self):
         """Load parameters from ROS parameter server"""
         # Visualization parameters
-        self.text_scale = self.get_parameter('text_scale').value
-        self.text_thickness = self.get_parameter('text_thickness').value
-        self.line_thickness = self.get_parameter('line_thickness').value
+        self.text_scale = float(self.get_parameter('text_scale').value)
+        self.text_thickness = int(self.get_parameter('text_thickness').value)
+        self.line_thickness = int(self.get_parameter('line_thickness').value)
+        self.hud_scale = float(self.get_parameter('hud_scale').value)
+        self.hud_bg = bool(self.get_parameter('hud_bg').value)
         self.bounding_box_color = (
-            self.get_parameter('bounding_box_color_red').value,
-            self.get_parameter('bounding_box_color_green').value,
-            self.get_parameter('bounding_box_color_blue').value
+            int(self.get_parameter('bounding_box_color_red').value),
+            int(self.get_parameter('bounding_box_color_green').value),
+            int(self.get_parameter('bounding_box_color_blue').value)
         )
         self.circle_color = (
-            self.get_parameter('circle_color_red').value,
-            self.get_parameter('circle_color_green').value,
-            self.get_parameter('circle_color_blue').value
+            int(self.get_parameter('circle_color_red').value),
+            int(self.get_parameter('circle_color_green').value),
+            int(self.get_parameter('circle_color_blue').value)
         )
         self.pass_color = (
-            self.get_parameter('pass_color_red').value,
-            self.get_parameter('pass_color_green').value,
-            self.get_parameter('pass_color_blue').value
+            int(self.get_parameter('pass_color_red').value),
+            int(self.get_parameter('pass_color_green').value),
+            int(self.get_parameter('pass_color_blue').value)
         )
         self.fail_color = (
-            self.get_parameter('fail_color_red').value,
-            self.get_parameter('fail_color_green').value,
-            self.get_parameter('fail_color_blue').value
+            int(self.get_parameter('fail_color_red').value),
+            int(self.get_parameter('fail_color_green').value),
+            int(self.get_parameter('fail_color_blue').value)
         )
         
+        # Throughput control
+        self.publish_rate_hz = float(self.get_parameter('publish_rate_hz').value)
+        
         # Performance parameters
-        self.enable_profiling = self.get_parameter('enable_profiling').value
-        self.publish_debug_info = self.get_parameter('publish_debug_info').value
-        self.use_parallel_processing = self.get_parameter('use_parallel_processing').value
-        self.max_processing_time_ms = self.get_parameter('max_processing_time_ms').value
+        self.enable_profiling = bool(self.get_parameter('enable_profiling').value)
+        self.publish_debug_info = bool(self.get_parameter('publish_debug_info').value)
+        self.use_parallel_processing = bool(self.get_parameter('use_parallel_processing').value)
+        self.max_processing_time_ms = float(self.get_parameter('max_processing_time_ms').value)
         
         # Load configuration for analyzers
         self.config = {
@@ -160,7 +175,14 @@ class HybridDetectorNode(Node):
     def image_callback(self, msg: Image):
         """Callback for incoming preprocessed image messages"""
         try:
-            start_time = time.time()
+            # Simple throttle to avoid backlog/lag
+            now = time.time()
+            if self.publish_rate_hz > 0.0:
+                min_dt = 1.0 / self.publish_rate_hz
+                if (now - self._last_pub_time_s) < min_dt:
+                    return
+            
+            start_time = now
             
             # Convert ROS image to OpenCV format
             cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
@@ -171,8 +193,9 @@ class HybridDetectorNode(Node):
             # Create annotated image
             annotated_image = self.create_annotated_image(cv_image, detection_result)
             
-            # Publish results
-            self.publish_results(annotated_image, detection_result, msg.header)
+            # Publish results (metadata temporarily disabled)
+            self.publish_annotated_image(annotated_image, msg.header)
+            self._last_pub_time_s = now
             
             # Update performance stats
             processing_time = (time.time() - start_time) * 1000
@@ -191,8 +214,8 @@ class HybridDetectorNode(Node):
             
             if self.use_parallel_processing:
                 # Parallel processing
-                contour_future = self.executor.submit(self.contour_analyzer.detect_defects, image)
-                sift_future = self.executor.submit(self.sift_analyzer.analyze_textural_defects, image, [])
+                contour_future = self.thread_pool.submit(self.contour_analyzer.detect_defects, image)
+                sift_future = self.thread_pool.submit(self.sift_analyzer.analyze_textural_defects, image, [])
                 
                 # Get results
                 contour_defects = contour_future.result()
@@ -233,54 +256,63 @@ class HybridDetectorNode(Node):
         try:
             # Create copy of original image
             annotated = image.copy()
-            
+            h, w = annotated.shape[:2]
+            base = min(h, w)
+            # Increase lower bound for small frames and apply user hud_scale
+            scale = max(0.8, base / 900.0) * self.hud_scale
+            thin  = max(1, int(self.text_thickness * scale))
+            line  = max(1, int(self.line_thickness * scale))
+            rad   = max(8, int(0.02 * base))
+            s     = self.text_scale * scale
+
             # Draw contour defects (red bounding boxes)
             for defect in detection_result['contour_defects']:
-                x, y, w, h = defect.bounding_box
-                cv2.rectangle(annotated, (x, y), (x + w, y + h), self.bounding_box_color, self.line_thickness)
-                
-                # Add defect label
+                x, y, w_b, h_b = defect.bounding_box
+                cv2.rectangle(annotated, (x, y), (x + w_b, y + h_b), self.bounding_box_color, line)
                 label = f"{defect.defect_type}: {defect.severity_score:.2f}"
-                cv2.putText(annotated, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 
-                           self.text_scale * 0.5, self.bounding_box_color, self.text_thickness)
+                cv2.putText(annotated, label, (x, max(0, y - 5)), cv2.FONT_HERSHEY_SIMPLEX,
+                            s * 0.55, self.bounding_box_color, thin, cv2.LINE_AA)
             
-            # Draw SIFT defects (orange circles)
+            # Draw SIFT defects (smaller circles)
             for defect in detection_result['sift_defects']:
                 x, y = int(defect.location[0]), int(defect.location[1])
-                cv2.circle(annotated, (x, y), 20, self.circle_color, self.line_thickness)
-                
-                # Add defect label
+                cv2.circle(annotated, (x, y), rad, self.circle_color, line)
                 label = f"SIFT: {defect.severity_score:.2f}"
-                cv2.putText(annotated, label, (x + 25, y), cv2.FONT_HERSHEY_SIMPLEX, 
-                           self.text_scale * 0.5, self.circle_color, self.text_thickness)
+                cv2.putText(annotated, label, (x + rad + 4, y), cv2.FONT_HERSHEY_SIMPLEX,
+                            s * 0.55, self.circle_color, thin, cv2.LINE_AA)
             
-            # Add status overlay
+            # Compact status overlay (top-left)
             fusion_result = detection_result['fusion_result']
             if fusion_result:
                 status_color = self.fail_color if fusion_result.defect_detected else self.pass_color
-                status_text = "FAIL" if fusion_result.defect_detected else "PASS"
-                
-                # Large status text
-                cv2.putText(annotated, status_text, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 
-                           self.text_scale * 2.0, status_color, self.text_thickness * 2)
-                
-                # Confidence and defect count
-                info_text = f"Confidence: {fusion_result.overall_confidence:.3f}"
-                cv2.putText(annotated, info_text, (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 
-                           self.text_scale * 0.8, status_color, self.text_thickness)
-                
-                defect_text = f"Defects: {fusion_result.total_defects}"
-                cv2.putText(annotated, defect_text, (50, 130), cv2.FONT_HERSHEY_SIMPLEX, 
-                           self.text_scale * 0.8, status_color, self.text_thickness)
+                status_text  = "FAIL" if fusion_result.defect_detected else "PASS"
+
+                def draw_text(bg_img, text, org, color, sc, th):
+                    (tw, th_text), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, sc, th)
+                    x0, y0 = org
+                    if self.hud_bg:
+                        pad = int(6 * scale)
+                        overlay = bg_img.copy()
+                        cv2.rectangle(overlay, (x0 - pad, y0 - th_text - pad), (x0 + tw + pad, y0 + pad), (0, 0, 0), -1)
+                        cv2.addWeighted(overlay, 0.35, bg_img, 0.65, 0, bg_img)
+                    cv2.putText(bg_img, text, (x0, y0), cv2.FONT_HERSHEY_SIMPLEX, sc, color, th, cv2.LINE_AA)
+
+                draw_text(annotated, status_text, (10, int(20 + 22 * s)), status_color, s * 1.3, max(1, int(thin * 1.2)))
+                draw_text(annotated, f"C:{fusion_result.overall_confidence:.3f} D:{fusion_result.total_defects}",
+                          (10, int(10 + 60 * s)), status_color, s * 0.9, thin)
             
-            # Add timestamp and performance info
+            # Compact footer (bottom-right): time | processing
             timestamp = time.strftime("%H:%M:%S")
-            cv2.putText(annotated, f"Time: {timestamp}", (50, annotated.shape[0] - 60), 
-                       cv2.FONT_HERSHEY_SIMPLEX, self.text_scale * 0.6, (255, 255, 255), self.text_thickness)
-            
-            processing_time = detection_result['processing_time_ms']
-            cv2.putText(annotated, f"Processing: {processing_time:.1f}ms", (50, annotated.shape[0] - 30), 
-                       cv2.FONT_HERSHEY_SIMPLEX, self.text_scale * 0.6, (255, 255, 255), self.text_thickness)
+            proc = f"{detection_result['processing_time_ms']:.1f}ms"
+            footer = f"{timestamp} | {proc}"
+            (tsw, tsh), _ = cv2.getTextSize(footer, cv2.FONT_HERSHEY_SIMPLEX, s * 0.85, thin)
+            x0 = w - tsw - 10
+            y0 = h - 10
+            if self.hud_bg:
+                overlay = annotated.copy()
+                cv2.rectangle(overlay, (x0 - 6, y0 - tsh - 8), (x0 + tsw + 6, y0 + 4), (0, 0, 0), -1)
+                cv2.addWeighted(overlay, 0.35, annotated, 0.65, 0, annotated)
+            cv2.putText(annotated, footer, (x0, y0), cv2.FONT_HERSHEY_SIMPLEX, s * 0.85, (255, 255, 255), thin, cv2.LINE_AA)
             
             return annotated
             
@@ -288,9 +320,9 @@ class HybridDetectorNode(Node):
             self.logger.error(f"Error creating annotated image: {e}")
             return image
     
-    def create_defect_metadata(self, detection_result: Dict) -> DefectMetadata:
+    def create_defect_metadata(self, detection_result: Dict):  # -> DefectMetadata:
         """
-        Create defect metadata message
+        Create defect metadata message (temporarily disabled)
         """
         try:
             metadata = DefectMetadata()
@@ -360,11 +392,23 @@ class HybridDetectorNode(Node):
             
             metadata.defect_details = defect_details
             
-            return metadata
+            return None  # metadata
             
         except Exception as e:
             self.logger.error(f"Error creating defect metadata: {e}")
-            return DefectMetadata()
+            return None  # DefectMetadata()
+    
+    def publish_annotated_image(self, annotated_image: np.ndarray, original_header):
+        """Publish annotated image"""
+        try:
+            # Publish annotated image
+            ros_image = self.bridge.cv2_to_imgmsg(annotated_image, "bgr8")
+            ros_image.header.stamp = self.get_clock().now().to_msg()
+            ros_image.header.frame_id = original_header.frame_id
+            self.annotated_pub.publish(ros_image)
+            
+        except Exception as e:
+            self.logger.error(f"Error publishing annotated image: {e}")
     
     def publish_results(self, annotated_image: np.ndarray, detection_result: Dict, original_header):
         """Publish annotated image and metadata"""
@@ -375,9 +419,9 @@ class HybridDetectorNode(Node):
             ros_image.header.frame_id = original_header.frame_id
             self.annotated_pub.publish(ros_image)
             
-            # Publish metadata
-            metadata = self.create_defect_metadata(detection_result)
-            self.metadata_pub.publish(metadata)
+            # Publish metadata (temporarily disabled)
+            # metadata = self.create_defect_metadata(detection_result)
+            # self.metadata_pub.publish(metadata)
             
         except Exception as e:
             self.logger.error(f"Error publishing results: {e}")
@@ -406,8 +450,8 @@ class HybridDetectorNode(Node):
     
     def cleanup(self):
         """Cleanup resources"""
-        if hasattr(self, 'executor'):
-            self.executor.shutdown(wait=True)
+        if hasattr(self, 'thread_pool'):
+            self.thread_pool.shutdown(wait=True)
         
         self.logger.info("Hybrid detector node cleanup completed")
 

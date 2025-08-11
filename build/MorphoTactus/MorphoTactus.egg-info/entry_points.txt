@@ -2,4 +2,7 @@
 hybrid_detector_node = MorphoTactus.hybrid_detector_node:main
 image_source_node = MorphoTactus.image_source_node:main
 preprocessing_node = MorphoTactus.preprocessing_node:main
+realtime_video_viewer_node = MorphoTactus.realtime_video_viewer:main
+simple_video_viewer_node = MorphoTactus.simple_video_viewer:main
+video_viewer_node = MorphoTactus.video_viewer_node:main
 

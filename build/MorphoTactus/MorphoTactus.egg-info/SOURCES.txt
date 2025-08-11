@@ -6,6 +6,9 @@ MorphoTactus/__init__.py
 MorphoTactus/hybrid_detector_node.py
 MorphoTactus/image_source_node.py
 MorphoTactus/preprocessing_node.py
+MorphoTactus/realtime_video_viewer.py
+MorphoTactus/simple_video_viewer.py
+MorphoTactus/video_viewer_node.py
 MorphoTactus/utils/__init__.py
 MorphoTactus/utils/contour_analyzer.py
 MorphoTactus/utils/fusion_engine.py
@@ -19,6 +22,7 @@ build/MorphoTactus/MorphoTactus.egg-info/top_level.txt
 build/MorphoTactus/MorphoTactus.egg-info/zip-safe
 config/detector_params.yaml
 launch/defect_detection_system.launch.py
+launch/simple_defect_detection.launch.py
 msg/DefectInfo.msg
 msg/DefectMetadata.msg
 resource/MorphoTactus

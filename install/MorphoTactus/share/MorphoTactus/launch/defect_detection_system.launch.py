@@ -2,7 +2,7 @@
 
 import os
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
@@ -95,7 +95,7 @@ def generate_launch_description():
         name='rviz2',
         arguments=['-d', rviz_config_file],
         parameters=[{'use_sim_time': use_sim_time}],
-        condition=LaunchConfiguration('enable_rviz')
+        condition=IfCondition(LaunchConfiguration('enable_rviz'))
     )
     
     # Declare RViz argument
@@ -114,7 +114,7 @@ def generate_launch_description():
         remappings=[
             ('image', '/defect_detection/annotated_image'),
         ],
-        condition=LaunchConfiguration('enable_image_view')
+        condition=IfCondition(LaunchConfiguration('enable_image_view'))
     )
     
     # Declare image viewer argument
@@ -130,7 +130,7 @@ def generate_launch_description():
         executable='aggregator_node',
         name='diagnostic_aggregator',
         parameters=[config_file],
-        condition=LaunchConfiguration('enable_diagnostics')
+        condition=IfCondition(LaunchConfiguration('enable_diagnostics'))
     )
     
     # Declare diagnostics argument

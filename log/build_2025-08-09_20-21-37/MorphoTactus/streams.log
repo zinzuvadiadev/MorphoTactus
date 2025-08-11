@@ -1,0 +1,26 @@
+[0.359s] Invoking command in '/home/quoppo/Oak-D-Lite/MorphoTactus': PYTHONPATH=/home/quoppo/Oak-D-Lite/MorphoTactus/build/MorphoTactus/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/quoppo/Oak-D-Lite/MorphoTactus/install/MorphoTactus/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base build/MorphoTactus build --build-base /home/quoppo/Oak-D-Lite/MorphoTactus/build/MorphoTactus/build install --record /home/quoppo/Oak-D-Lite/MorphoTactus/build/MorphoTactus/install.log --single-version-externally-managed install_data
+[0.485s] running egg_info
+[0.486s] writing build/MorphoTactus/MorphoTactus.egg-info/PKG-INFO
+[0.486s] writing dependency_links to build/MorphoTactus/MorphoTactus.egg-info/dependency_links.txt
+[0.486s] writing entry points to build/MorphoTactus/MorphoTactus.egg-info/entry_points.txt
+[0.486s] writing requirements to build/MorphoTactus/MorphoTactus.egg-info/requires.txt
+[0.486s] writing top-level names to build/MorphoTactus/MorphoTactus.egg-info/top_level.txt
+[0.487s] reading manifest file 'build/MorphoTactus/MorphoTactus.egg-info/SOURCES.txt'
+[0.487s] writing manifest file 'build/MorphoTactus/MorphoTactus.egg-info/SOURCES.txt'
+[0.487s] running build
+[0.487s] running build_py
+[0.487s] running install
+[0.487s] running install_lib
+[0.488s] running install_data
+[0.488s] running install_egg_info
+[0.489s] removing '/home/quoppo/Oak-D-Lite/MorphoTactus/install/MorphoTactus/lib/python3.10/site-packages/MorphoTactus-0.0.0-py3.10.egg-info' (and everything under it)
+[0.489s] Copying build/MorphoTactus/MorphoTactus.egg-info to /home/quoppo/Oak-D-Lite/MorphoTactus/install/MorphoTactus/lib/python3.10/site-packages/MorphoTactus-0.0.0-py3.10.egg-info
+[0.489s] running install_scripts
+[0.498s] Installing hybrid_detector_node script to /home/quoppo/Oak-D-Lite/MorphoTactus/install/MorphoTactus/lib/MorphoTactus
+[0.498s] Installing image_source_node script to /home/quoppo/Oak-D-Lite/MorphoTactus/install/MorphoTactus/lib/MorphoTactus
+[0.498s] Installing preprocessing_node script to /home/quoppo/Oak-D-Lite/MorphoTactus/install/MorphoTactus/lib/MorphoTactus
+[0.498s] Installing realtime_video_viewer_node script to /home/quoppo/Oak-D-Lite/MorphoTactus/install/MorphoTactus/lib/MorphoTactus
+[0.498s] Installing simple_video_viewer_node script to /home/quoppo/Oak-D-Lite/MorphoTactus/install/MorphoTactus/lib/MorphoTactus
+[0.498s] Installing video_viewer_node script to /home/quoppo/Oak-D-Lite/MorphoTactus/install/MorphoTactus/lib/MorphoTactus
+[0.498s] writing list of installed files to '/home/quoppo/Oak-D-Lite/MorphoTactus/build/MorphoTactus/install.log'
+[0.508s] Invoked command in '/home/quoppo/Oak-D-Lite/MorphoTactus' returned '0': PYTHONPATH=/home/quoppo/Oak-D-Lite/MorphoTactus/build/MorphoTactus/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/quoppo/Oak-D-Lite/MorphoTactus/install/MorphoTactus/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base build/MorphoTactus build --build-base /home/quoppo/Oak-D-Lite/MorphoTactus/build/MorphoTactus/build install --record /home/quoppo/Oak-D-Lite/MorphoTactus/build/MorphoTactus/install.log --single-version-externally-managed install_data

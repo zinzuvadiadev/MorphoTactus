@@ -29,7 +29,7 @@ class ImageSourceNode(Node):
         self.bridge = CvBridge()
         
         # Get parameters
-        self.declare_parameters()
+        self.declare_node_parameters()
         self.load_parameters()
         
         # Setup logging
@@ -59,14 +59,14 @@ class ImageSourceNode(Node):
         
         self.get_logger().info("Image source node initialized successfully")
     
-    def declare_parameters(self):
+    def declare_node_parameters(self):
         """Declare ROS parameters"""
         self.declare_parameter('camera_source', 'usb')
         self.declare_parameter('camera_index', 0)
         self.declare_parameter('camera_url', '')
         self.declare_parameter('frame_width', 640)
         self.declare_parameter('frame_height', 480)
-        self.declare_parameter('frame_rate', 30.0)
+        self.declare_parameter('frame_rate', 45.0)
         self.declare_parameter('auto_exposure', True)
         self.declare_parameter('exposure_time', 100)
         self.declare_parameter('gain', 1.0)

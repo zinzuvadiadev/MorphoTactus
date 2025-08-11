@@ -14,6 +14,7 @@ import numpy as np
 import time
 import logging
 from typing import Optional, Tuple
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 class PreprocessingNode(Node):
     """
@@ -35,8 +36,13 @@ class PreprocessingNode(Node):
         self.setup_logging()
         
         # Initialize subscribers and publishers
+        sensor_qos = QoSProfile(depth=5)
+
+        # Reliable for oak 
+        sensor_qos.reliability = ReliabilityPolicy.RELIABLE
+        sensor_qos.history = HistoryPolicy.KEEP_LAST
         self.image_sub = self.create_subscription(
-            Image, 'image_raw', self.image_callback, 10)
+            Image, '/oak/rgb/image_raw', self.image_callback, sensor_qos)
         self.preprocessed_pub = self.create_publisher(Image, 'preprocessed_image', 10)
         
         # Performance tracking
@@ -48,19 +54,22 @@ class PreprocessingNode(Node):
     def declare_node_parameters(self):
         """Declare ROS parameters"""
         # ROI parameters
-        self.declare_parameter('roi_x_min', 50)
-        self.declare_parameter('roi_y_min', 50)
-        self.declare_parameter('roi_x_max', 590)
-        self.declare_parameter('roi_y_max', 430)
+        self.declare_parameter('enable_roi', False)
+        self.declare_parameter('roi_x_min', 0)
+        self.declare_parameter('roi_y_min', 0)
+        self.declare_parameter('roi_x_max', 0)  # 0 => full width
+        self.declare_parameter('roi_y_max', 0)  # 0 => full height
         
-        # Image processing parameters
+        # Image processing parameters (gentler defaults)
         self.declare_parameter('gaussian_blur_kernel', 5)
-        self.declare_parameter('bilateral_filter_d', 9)
-        self.declare_parameter('bilateral_filter_sigma_color', 75)
-        self.declare_parameter('bilateral_filter_sigma_space', 75)
-        self.declare_parameter('enable_histogram_equalization', True)
-        self.declare_parameter('enable_noise_reduction', True)
-        self.declare_parameter('enable_contrast_enhancement', True)
+        self.declare_parameter('bilateral_filter_d', 5)
+        self.declare_parameter('bilateral_filter_sigma_color', 50)
+        self.declare_parameter('bilateral_filter_sigma_space', 50)
+        self.declare_parameter('enable_histogram_equalization', False)
+        self.declare_parameter('enable_noise_reduction', False)
+        self.declare_parameter('enable_contrast_enhancement', False)
+        self.declare_parameter('enable_sharpen', True)
+        self.declare_parameter('sharpen_amount', 0.6)
         
         # Performance parameters
         self.declare_parameter('enable_profiling', True)
@@ -69,6 +78,7 @@ class PreprocessingNode(Node):
     def load_parameters(self):
         """Load parameters from ROS parameter server"""
         # ROI parameters
+        self.enable_roi = self.get_parameter('enable_roi').value
         self.roi_x_min = self.get_parameter('roi_x_min').value
         self.roi_y_min = self.get_parameter('roi_y_min').value
         self.roi_x_max = self.get_parameter('roi_x_max').value
@@ -82,6 +92,8 @@ class PreprocessingNode(Node):
         self.enable_histogram_equalization = self.get_parameter('enable_histogram_equalization').value
         self.enable_noise_reduction = self.get_parameter('enable_noise_reduction').value
         self.enable_contrast_enhancement = self.get_parameter('enable_contrast_enhancement').value
+        self.enable_sharpen = self.get_parameter('enable_sharpen').value
+        self.sharpen_amount = float(self.get_parameter('sharpen_amount').value)
         
         # Performance parameters
         self.enable_profiling = self.get_parameter('enable_profiling').value
@@ -121,20 +133,24 @@ class PreprocessingNode(Node):
         Apply complete preprocessing pipeline
         """
         try:
-            # Step 1: Extract ROI
+            # Step 1: Extract ROI (optional; defaults to full image)
             roi_image = self.extract_roi(image)
             
-            # Step 2: Noise reduction
+            # Step 2: Noise reduction (gentle, disabled by default)
             if self.enable_noise_reduction:
                 roi_image = self.reduce_noise(roi_image)
             
-            # Step 3: Contrast enhancement
+            # Step 3: Contrast enhancement (disabled by default)
             if self.enable_contrast_enhancement:
                 roi_image = self.enhance_contrast(roi_image)
             
-            # Step 4: Histogram equalization
+            # Step 4: Histogram equalization (disabled by default)
             if self.enable_histogram_equalization:
                 roi_image = self.apply_histogram_equalization(roi_image)
+            
+            # Step 5: Optional sharpening for crisper material texture
+            if self.enable_sharpen:
+                roi_image = self.sharpen_image(roi_image, self.sharpen_amount)
             
             return roi_image
             
@@ -144,16 +160,20 @@ class PreprocessingNode(Node):
     
     def extract_roi(self, image: np.ndarray) -> np.ndarray:
         """
-        Extract Region of Interest from image
+        Extract Region of Interest from image. If disabled, return full frame.
         """
         try:
+            if not self.enable_roi:
+                return image
             height, width = image.shape[:2]
             
             # Ensure ROI bounds are within image dimensions
             x_min = max(0, min(self.roi_x_min, width - 1))
             y_min = max(0, min(self.roi_y_min, height - 1))
-            x_max = max(x_min + 1, min(self.roi_x_max, width))
-            y_max = max(y_min + 1, min(self.roi_y_max, height))
+            x_max = self.roi_x_max if self.roi_x_max > 0 else width
+            y_max = self.roi_y_max if self.roi_y_max > 0 else height
+            x_max = max(x_min + 1, min(x_max, width))
+            y_max = max(y_min + 1, min(y_max, height))
             
             # Extract ROI
             roi = image[y_min:y_max, x_min:x_max]
@@ -217,7 +237,7 @@ class PreprocessingNode(Node):
         """
         try:
             if len(image.shape) == 3:
-                # For color images, apply to each channel separately
+                # For color images, apply to Y channel only
                 ycrcb = cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb)
                 y, cr, cb = cv2.split(ycrcb)
                 
@@ -253,6 +273,15 @@ class PreprocessingNode(Node):
         except Exception as e:
             self.logger.error(f"Error in Gaussian blur: {e}")
             return image
+    
+    def sharpen_image(self, img: np.ndarray, amount: float) -> np.ndarray:
+        """Simple unsharp masking for clarity"""
+        try:
+            blur = cv2.GaussianBlur(img, (0, 0), sigmaX=1.0)
+            return cv2.addWeighted(img, 1.0 + float(amount), blur, -float(amount), 0)
+        except Exception as e:
+            self.logger.error(f"Error in sharpening: {e}")
+            return img
     
     def publish_processed_image(self, image: np.ndarray, original_header):
         """Publish processed image to ROS topic"""
